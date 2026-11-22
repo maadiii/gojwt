@@ -8,9 +8,11 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// ErrSubjectBlocked is returned when a valid token belongs to a subject that
-// the caller's deny list rejects.
-var ErrSubjectBlocked = errors.New("jwt: subject is blocked")
+var (
+	ErrDeniedSubject = errors.New("subject is denied")
+	ErrInvalidToken  = errors.New("invalid token")
+	ErrInvalidClaims = errors.New("invalid claims")
+)
 
 type JwtClaims struct {
 	jwt.RegisteredClaims

@@ -31,7 +31,7 @@ type JwtPublic struct {
 // NewPublicSig construc *JwtPublic to sign the token in the signature side.
 func NewPublicSig(cfg *PublicConfig) (*JwtPublic, error) { //nolint
 	if cfg == nil || cfg.AccessPrivateKeyPath == "" || cfg.RefreshPrivatePath == "" {
-		return nil, errors.New("jwt: private key paths are required")
+		return nil, errors.New("private key paths are required")
 	}
 
 	accPrivKey, err := loadPrivateKey(cfg.AccessPrivateKeyPath)
@@ -75,7 +75,7 @@ func NewPublicSigWithDenyHandler(
 	cfg *PublicConfig, denyFn denyFn, undenyFn undenyFn, deniedFn deniedFn,
 ) (*JwtPublic, error) {
 	if denyFn == nil || undenyFn == nil || deniedFn == nil {
-		return nil, errors.New("jwt: denyFn, undenyFn and deniedFn all must be set")
+		return nil, errors.New("denyFn, undenyFn and deniedFn all must be set")
 	}
 
 	jwt, err := NewPublicSig(cfg)
@@ -93,7 +93,7 @@ func NewPublicSigWithDenyHandler(
 // NewPublicVer construct *JwtPublic to verify the token in the verifier side.
 func NewPublicVer(cfg *PublicConfig) (*JwtPublic, error) { //nolint
 	if cfg == nil || cfg.AccessPublicKeyPath == "" || cfg.RefreshPublicKeyPath == "" {
-		return nil, errors.New("jwt: public key paths are required")
+		return nil, errors.New("public key paths are required")
 	}
 
 	accPubKey, err := loadPublicKey(cfg.AccessPublicKeyPath)
@@ -160,7 +160,7 @@ func (j *JwtPublic) Generate(
 		return nil, fmt.Errorf("%w", err)
 	}
 	if denied {
-		return nil, errors.New("subject is denied")
+		return nil, ErrDeniedSubject
 	}
 
 	access, err := j.makeToken(subject, AccessTokenType, j.accessTtl, j.accessPrivateKey, accessCustomeClaims)
@@ -239,16 +239,16 @@ func (j *JwtPublic) validate(
 	}
 
 	if !token.Valid {
-		return nil, errors.New("invalid token")
+		return nil, ErrInvalidToken
 	}
 
 	claims, ok := token.Claims.(*JwtClaims)
 	if !ok {
-		return nil, errors.New("invalid claims")
+		return nil, ErrInvalidClaims
 	}
 
 	if claims.TokenType != expected {
-		return nil, errors.New("invalid token")
+		return nil, ErrInvalidToken
 	}
 
 	denied, err := j.deniedFn(ctx, claims.Subject)
@@ -256,17 +256,17 @@ func (j *JwtPublic) validate(
 		return nil, fmt.Errorf("%w", err)
 	}
 	if denied {
-		return nil, errors.New("subject is denied")
+		return nil, ErrDeniedSubject
 	}
 
 	return claims, nil
 }
 
-func (j JwtPublic) Deny(ctx context.Context, subject string) error {
+func (j *JwtPublic) Deny(ctx context.Context, subject string) error {
 	return j.denyFn(ctx, subject)
 }
 
-func (j JwtPublic) Undeny(ctx context.Context, subject string) error {
+func (j *JwtPublic) Undeny(ctx context.Context, subject string) error {
 	return j.undenyFn(ctx, subject)
 }
 

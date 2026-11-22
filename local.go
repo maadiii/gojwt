@@ -66,7 +66,7 @@ func (j JwtLocal) Generate(
 	}
 
 	if denied {
-		return nil, errors.New("subject is denied")
+		return nil, ErrDeniedSubject
 	}
 
 	access, err := j.makeToken(subject, AccessTokenType, j.accessTtl, j.accessKey, accessCustomClaims)
@@ -122,7 +122,7 @@ func (j JwtLocal) makeToken(
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := token.SignedString(key)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("%w", err)
 	}
 
 	return signed, nil
@@ -148,16 +148,16 @@ func (j JwtLocal) validate(ctx context.Context, signed string, expected TokenTyp
 	}
 
 	if !token.Valid {
-		return nil, errors.New("invalid token")
+		return nil, ErrInvalidToken
 	}
 
 	claims, ok := token.Claims.(*JwtClaims)
 	if !ok {
-		return nil, errors.New("invalid claims")
+		return nil, ErrInvalidClaims
 	}
 
 	if localClaims.TokenType != expected {
-		return nil, errors.New("invalid token")
+		return nil, ErrInvalidToken
 	}
 
 	denied, err := j.deniedFn(ctx, claims.Subject)
@@ -166,7 +166,7 @@ func (j JwtLocal) validate(ctx context.Context, signed string, expected TokenTyp
 	}
 
 	if denied {
-		return nil, errors.New("invalid token")
+		return nil, ErrDeniedSubject
 	}
 
 	return claims, nil

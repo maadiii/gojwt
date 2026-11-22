@@ -207,11 +207,11 @@ func testDenyListDecisions(
 
 		tokens := mustGenerate(t, svc, testBlockedUser)
 
-		if _, err := svc.ValidateAccess(tokens.Access); !errors.Is(err, ErrSubjectBlocked) {
-			t.Errorf("ValidateAccess() error = %v, want %v", err, ErrSubjectBlocked)
+		if _, err := svc.ValidateAccess(tokens.Access); !errors.Is(err, ErrDeniedSubject) {
+			t.Errorf("ValidateAccess() error = %v, want %v", err, ErrDeniedSubject)
 		}
-		if _, err := svc.ValidateRefresh(tokens.Refresh); !errors.Is(err, ErrSubjectBlocked) {
-			t.Errorf("ValidateRefresh() error = %v, want %v", err, ErrSubjectBlocked)
+		if _, err := svc.ValidateRefresh(tokens.Refresh); !errors.Is(err, ErrDeniedSubject) {
+			t.Errorf("ValidateRefresh() error = %v, want %v", err, ErrDeniedSubject)
 		}
 
 		want := []string{testBlockedUser, testBlockedUser}
@@ -243,8 +243,8 @@ func testDenyListFailures(
 		if !errors.Is(err, denyErr) {
 			t.Errorf("ValidateAccess() error = %v, want %v", err, denyErr)
 		}
-		if errors.Is(err, ErrSubjectBlocked) {
-			t.Errorf("ValidateAccess() error = %v, want no %v", err, ErrSubjectBlocked)
+		if errors.Is(err, ErrDeniedSubject) {
+			t.Errorf("ValidateAccess() error = %v, want no %v", err, ErrDeniedSubject)
 		}
 		if len(events) != 0 {
 			t.Errorf("events = %v, want none", events)
@@ -264,8 +264,8 @@ func testDenyListFailures(
 		if err == nil {
 			t.Fatal("ValidateAccess() error = nil, want error")
 		}
-		if errors.Is(err, ErrSubjectBlocked) {
-			t.Errorf("ValidateAccess() error = %v, want no %v", err, ErrSubjectBlocked)
+		if errors.Is(err, ErrDeniedSubject) {
+			t.Errorf("ValidateAccess() error = %v, want no %v", err, ErrDeniedSubject)
 		}
 		if len(events) != 0 {
 			t.Errorf("events = %v, want none", events)
