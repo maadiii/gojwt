@@ -372,6 +372,47 @@ func TestJwtPublicSignerVerifierRoundTrip(t *testing.T) {
 	}
 }
 
+// publicDenyService adapts the shared deny-list cases to JwtPublic. The blocked
+// check is wired to deniedFn and reports through onBlocked when a subject is
+// rejected; nil hooks mean the service is built without deny handlers.
+func publicDenyService(
+	t *testing.T, isBlocked func(string) (bool, error), onBlocked func(string),
+) tokenService {
+	t.Helper()
+
+	access, refresh, _ := testKeyPairs(t)
+	cfg := publicFullConfig(t, access, refresh)
+	if isBlocked == nil {
+		return mustPublicSig(t, cfg)
+	}
+
+	noopHook := func(context.Context, string) error { return nil }
+	denied := func(_ context.Context, subject string) (bool, error) {
+		blocked, err := isBlocked(subject)
+		if err != nil {
+			return false, err
+		}
+		if blocked && onBlocked != nil {
+			onBlocked(subject)
+		}
+
+		return blocked, nil
+	}
+
+	j, err := NewPublicSigWithDenyHandler(cfg, noopHook, noopHook, denied)
+	if err != nil {
+		t.Fatalf("NewPublicSigWithDenyHandler: %v", err)
+	}
+
+	return j
+}
+
+func TestJwtPublicDenyList(t *testing.T) {
+	t.Parallel()
+
+	runDenyListTests(t, publicDenyService)
+}
+
 func TestJwtPublicValidateErrors(t *testing.T) {
 	t.Parallel()
 

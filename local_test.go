@@ -191,6 +191,46 @@ func TestJwtLocalGenerateWithoutCustomClaims(t *testing.T) {
 	}
 }
 
+// localDenyService adapts the shared deny-list cases to JwtLocal. The blocked
+// check is wired to deniedFn and reports through onBlocked when a subject is
+// rejected; nil hooks mean the service is built without deny handlers.
+func localDenyService(
+	t *testing.T, isBlocked func(string) (bool, error), onBlocked func(string),
+) tokenService {
+	t.Helper()
+
+	cfg := localConfig()
+	if isBlocked == nil {
+		return mustLocal(t, cfg)
+	}
+
+	noopHook := func(context.Context, string) error { return nil }
+	denied := func(_ context.Context, subject string) (bool, error) {
+		blocked, err := isBlocked(subject)
+		if err != nil {
+			return false, err
+		}
+		if blocked && onBlocked != nil {
+			onBlocked(subject)
+		}
+
+		return blocked, nil
+	}
+
+	j, err := NewLocalWithDenyHandler(cfg, noopHook, noopHook, denied)
+	if err != nil {
+		t.Fatalf("NewLocalWithDenyHandler: %v", err)
+	}
+
+	return j
+}
+
+func TestJwtLocalDenyList(t *testing.T) {
+	t.Parallel()
+
+	runDenyListTests(t, localDenyService)
+}
+
 func TestJwtLocalValidateErrors(t *testing.T) {
 	t.Parallel()
 

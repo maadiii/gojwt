@@ -1,6 +1,7 @@
 package gojwt
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -152,16 +153,16 @@ func assertIssuedAfter(t *testing.T, claims *JwtClaims, earliest time.Time) {
 }
 
 type tokenService interface {
-	Generate(subject string, accessClaims, refreshClaims map[string]any) (*Tokens, error)
-	ValidateAccess(signed string) (*JwtClaims, error)
-	ValidateRefresh(signed string) (*JwtClaims, error)
+	Generate(ctx context.Context, subject string, accessClaims, refreshClaims map[string]any) (*Tokens, error)
+	ValidateAccess(ctx context.Context, signed string) (*JwtClaims, error)
+	ValidateRefresh(ctx context.Context, signed string) (*JwtClaims, error)
 }
 
 // runDenyListTests exercises the deny list contract shared by both
 // implementations. newService must apply the supplied hooks to its config.
 func runDenyListTests(
 	t *testing.T,
-	newService func(isBlocked func(string) (bool, error), onBlocked func(string)) tokenService,
+	newService func(t *testing.T, isBlocked func(string) (bool, error), onBlocked func(string)) tokenService,
 ) {
 	t.Helper()
 
@@ -171,7 +172,7 @@ func runDenyListTests(
 
 func testDenyListDecisions(
 	t *testing.T,
-	newService func(isBlocked func(string) (bool, error), onBlocked func(string)) tokenService,
+	newService func(t *testing.T, isBlocked func(string) (bool, error), onBlocked func(string)) tokenService,
 ) {
 	t.Helper()
 
@@ -180,15 +181,16 @@ func testDenyListDecisions(
 
 		var events []string
 		svc := newService(
+			t,
 			func(subject string) (bool, error) { return subject == testBlockedUser, nil },
 			func(subject string) { events = append(events, subject) },
 		)
 
 		tokens := mustGenerate(t, svc, testSubject)
-		if _, err := svc.ValidateAccess(tokens.Access); err != nil {
+		if _, err := svc.ValidateAccess(context.Background(), tokens.Access); err != nil {
 			t.Fatalf("ValidateAccess() error = %v", err)
 		}
-		if _, err := svc.ValidateRefresh(tokens.Refresh); err != nil {
+		if _, err := svc.ValidateRefresh(context.Background(), tokens.Refresh); err != nil {
 			t.Fatalf("ValidateRefresh() error = %v", err)
 		}
 		if len(events) != 0 {
@@ -201,16 +203,17 @@ func testDenyListDecisions(
 
 		var events []string
 		svc := newService(
+			t,
 			func(subject string) (bool, error) { return subject == testBlockedUser, nil },
 			func(subject string) { events = append(events, subject) },
 		)
 
 		tokens := mustGenerate(t, svc, testBlockedUser)
 
-		if _, err := svc.ValidateAccess(tokens.Access); !errors.Is(err, ErrDeniedSubject) {
+		if _, err := svc.ValidateAccess(context.Background(), tokens.Access); !errors.Is(err, ErrDeniedSubject) {
 			t.Errorf("ValidateAccess() error = %v, want %v", err, ErrDeniedSubject)
 		}
-		if _, err := svc.ValidateRefresh(tokens.Refresh); !errors.Is(err, ErrDeniedSubject) {
+		if _, err := svc.ValidateRefresh(context.Background(), tokens.Refresh); !errors.Is(err, ErrDeniedSubject) {
 			t.Errorf("ValidateRefresh() error = %v, want %v", err, ErrDeniedSubject)
 		}
 
@@ -223,7 +226,7 @@ func testDenyListDecisions(
 
 func testDenyListFailures(
 	t *testing.T,
-	newService func(isBlocked func(string) (bool, error), onBlocked func(string)) tokenService,
+	newService func(t *testing.T, isBlocked func(string) (bool, error), onBlocked func(string)) tokenService,
 ) {
 	t.Helper()
 
@@ -233,13 +236,14 @@ func testDenyListFailures(
 		denyErr := errors.New("deny list unavailable")
 		var events []string
 		svc := newService(
+			t,
 			func(string) (bool, error) { return false, denyErr },
 			func(subject string) { events = append(events, subject) },
 		)
 
 		tokens := mustGenerate(t, svc, testSubject)
 
-		_, err := svc.ValidateAccess(tokens.Access)
+		_, err := svc.ValidateAccess(context.Background(), tokens.Access)
 		if !errors.Is(err, denyErr) {
 			t.Errorf("ValidateAccess() error = %v, want %v", err, denyErr)
 		}
@@ -256,11 +260,12 @@ func testDenyListFailures(
 
 		var events []string
 		svc := newService(
+			t,
 			func(string) (bool, error) { return true, nil },
 			func(subject string) { events = append(events, subject) },
 		)
 
-		_, err := svc.ValidateAccess("definitely-not-a-token")
+		_, err := svc.ValidateAccess(context.Background(), "definitely-not-a-token")
 		if err == nil {
 			t.Fatal("ValidateAccess() error = nil, want error")
 		}
@@ -275,10 +280,10 @@ func testDenyListFailures(
 	t.Run("accepts tokens without a deny list hook", func(t *testing.T) {
 		t.Parallel()
 
-		svc := newService(nil, nil)
+		svc := newService(t, nil, nil)
 
 		tokens := mustGenerate(t, svc, testBlockedUser)
-		if _, err := svc.ValidateAccess(tokens.Access); err != nil {
+		if _, err := svc.ValidateAccess(context.Background(), tokens.Access); err != nil {
 			t.Fatalf("ValidateAccess() error = %v", err)
 		}
 	})
@@ -287,7 +292,7 @@ func testDenyListFailures(
 func mustGenerate(t *testing.T, svc tokenService, subject string) *Tokens {
 	t.Helper()
 
-	tokens, err := svc.Generate(subject, nil, nil)
+	tokens, err := svc.Generate(context.Background(), subject, nil, nil)
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}

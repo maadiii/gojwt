@@ -155,14 +155,6 @@ func NewPublicVerWithDenyHandler(
 func (j *JwtPublic) Generate(
 	ctx context.Context, subject string, accessCustomeClaims map[string]any, refreshCustomeClaims map[string]any,
 ) (*Tokens, error) {
-	denied, err := j.deniedFn(ctx, subject)
-	if err != nil {
-		return nil, fmt.Errorf("%w", err)
-	}
-	if denied {
-		return nil, ErrDeniedSubject
-	}
-
 	access, err := j.makeToken(subject, AccessTokenType, j.accessTtl, j.accessPrivateKey, accessCustomeClaims)
 	if err != nil {
 		return nil, fmt.Errorf("%w", err)
@@ -251,12 +243,14 @@ func (j *JwtPublic) validate(
 		return nil, ErrInvalidToken
 	}
 
-	denied, err := j.deniedFn(ctx, claims.Subject)
-	if err != nil {
-		return nil, fmt.Errorf("%w", err)
-	}
-	if denied {
-		return nil, ErrDeniedSubject
+	if j.deniedFn != nil {
+		denied, err := j.deniedFn(ctx, claims.Subject)
+		if err != nil {
+			return nil, fmt.Errorf("%w", err)
+		}
+		if denied {
+			return nil, ErrDeniedSubject
+		}
 	}
 
 	return claims, nil
