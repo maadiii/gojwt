@@ -1,6 +1,7 @@
 package gojwt
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -17,6 +18,10 @@ type JwtLocal struct {
 	refreshKey []byte
 	accessTtl  time.Duration
 	refreshTtl time.Duration
+
+	denyFn   denyFn
+	undenyFn undenyFn
+	deniedFn deniedFn
 }
 
 func NewLocal(cfg *LocalConfig) (*JwtLocal, error) {
@@ -34,9 +39,36 @@ func NewLocal(cfg *LocalConfig) (*JwtLocal, error) {
 	}, nil
 }
 
+func NewLocalWithDenyHandler(cfg *LocalConfig, denyFn denyFn, undenyFn undenyFn, deniedFn deniedFn) (*JwtLocal, error) {
+	if denyFn == nil || deniedFn == nil || undenyFn == nil {
+		return nil, errors.New("jwt: denyFn, undenyFn and deniedFn all must be set")
+	}
+
+	jwt, err := NewLocal(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	jwt.denyFn = denyFn
+	jwt.undenyFn = undenyFn
+	jwt.deniedFn = deniedFn
+
+	return jwt, nil
+}
+
 func (j JwtLocal) Generate(
-	subject string, accessCustomClaims map[string]any, refreshCustomeClaims map[string]any,
+	ctx context.Context, subject string,
+	accessCustomClaims map[string]any, refreshCustomeClaims map[string]any,
 ) (*Tokens, error) {
+	denied, err := j.deniedFn(ctx, subject)
+	if err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+
+	if denied {
+		return nil, errors.New("subject is denied")
+	}
+
 	access, err := j.makeToken(subject, AccessTokenType, j.accessTtl, j.accessKey, accessCustomClaims)
 	if err != nil {
 		return nil, fmt.Errorf("%w", err)
@@ -50,12 +82,20 @@ func (j JwtLocal) Generate(
 	return &Tokens{access, refresh}, nil
 }
 
-func (j JwtLocal) ValidateAccess(signed string) (*JwtClaims, error) {
-	return j.validate(signed, AccessTokenType, j.accessKey)
+func (j JwtLocal) ValidateAccess(ctx context.Context, signed string) (*JwtClaims, error) {
+	return j.validate(ctx, signed, AccessTokenType, j.accessKey)
 }
 
-func (j JwtLocal) ValidateRefresh(signed string) (*JwtClaims, error) {
-	return j.validate(signed, RefreshTokenType, j.refreshKey)
+func (j JwtLocal) ValidateRefresh(ctx context.Context, signed string) (*JwtClaims, error) {
+	return j.validate(ctx, signed, RefreshTokenType, j.refreshKey)
+}
+
+func (j JwtLocal) Deny(ctx context.Context, subject string) error {
+	return j.denyFn(ctx, subject)
+}
+
+func (j JwtLocal) Undeny(ctx context.Context, subject string) error {
+	return j.undenyFn(ctx, subject)
 }
 
 func (j JwtLocal) makeToken(
@@ -88,7 +128,7 @@ func (j JwtLocal) makeToken(
 	return signed, nil
 }
 
-func (j JwtLocal) validate(signed string, expected TokenType, key []byte) (*JwtClaims, error) {
+func (j JwtLocal) validate(ctx context.Context, signed string, expected TokenType, key []byte) (*JwtClaims, error) {
 	localClaims := JwtClaims{}
 	token, err := jwt.ParseWithClaims(
 		signed, &localClaims, func(t *jwt.Token) (any, error) {
@@ -117,6 +157,15 @@ func (j JwtLocal) validate(signed string, expected TokenType, key []byte) (*JwtC
 	}
 
 	if localClaims.TokenType != expected {
+		return nil, errors.New("invalid token")
+	}
+
+	denied, err := j.deniedFn(ctx, claims.Subject)
+	if err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+
+	if denied {
 		return nil, errors.New("invalid token")
 	}
 

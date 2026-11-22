@@ -1,6 +1,7 @@
 package gojwt
 
 import (
+	"context"
 	"crypto/rsa"
 	"errors"
 	"fmt"
@@ -21,9 +22,13 @@ type JwtPublic struct {
 	refreshPublicKey  *rsa.PublicKey
 	accessTtl         time.Duration
 	refreshTtl        time.Duration
+
+	denyFn   denyFn
+	undenyFn undenyFn
+	deniedFn deniedFn
 }
 
-// NewPublicSig use to sign the token
+// NewPublicSig construc *JwtPublic to sign the token in the signature side.
 func NewPublicSig(cfg *PublicConfig) (*JwtPublic, error) { //nolint
 	if cfg == nil || cfg.AccessPrivateKeyPath == "" || cfg.RefreshPrivatePath == "" {
 		return nil, errors.New("jwt: private key paths are required")
@@ -65,7 +70,27 @@ func NewPublicSig(cfg *PublicConfig) (*JwtPublic, error) { //nolint
 	return jwtPublic, nil
 }
 
-// NewPublicVer use to verify the token
+// NewPublicSigWithDenyHandler construc *JwtPublic to sign the token in the signature side with deny handlers.
+func NewPublicSigWithDenyHandler(
+	cfg *PublicConfig, denyFn denyFn, undenyFn undenyFn, deniedFn deniedFn,
+) (*JwtPublic, error) {
+	if denyFn == nil || undenyFn == nil || deniedFn == nil {
+		return nil, errors.New("jwt: denyFn, undenyFn and deniedFn all must be set")
+	}
+
+	jwt, err := NewPublicSig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	jwt.denyFn = denyFn
+	jwt.undenyFn = undenyFn
+	jwt.deniedFn = deniedFn
+
+	return jwt, nil
+}
+
+// NewPublicVer construct *JwtPublic to verify the token in the verifier side.
 func NewPublicVer(cfg *PublicConfig) (*JwtPublic, error) { //nolint
 	if cfg == nil || cfg.AccessPublicKeyPath == "" || cfg.RefreshPublicKeyPath == "" {
 		return nil, errors.New("jwt: public key paths are required")
@@ -107,9 +132,37 @@ func NewPublicVer(cfg *PublicConfig) (*JwtPublic, error) { //nolint
 	return jwtPublic, nil
 }
 
+// NewPublicVerWithDenyHandler construc *JwtPublic to verify the token in the verifier side with deny handlers.
+func NewPublicVerWithDenyHandler(
+	cfg *PublicConfig, denyFn denyFn, undenyFn undenyFn, deniedFn deniedFn,
+) (*JwtPublic, error) {
+	if denyFn == nil || undenyFn == nil || deniedFn == nil {
+		return nil, errors.New("jwt: denyFn, undenyFn and deniedFn all must be set")
+	}
+
+	jwt, err := NewPublicVer(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	jwt.denyFn = denyFn
+	jwt.undenyFn = undenyFn
+	jwt.deniedFn = deniedFn
+
+	return jwt, nil
+}
+
 func (j *JwtPublic) Generate(
-	subject string, accessCustomeClaims map[string]any, refreshCustomeClaims map[string]any,
+	ctx context.Context, subject string, accessCustomeClaims map[string]any, refreshCustomeClaims map[string]any,
 ) (*Tokens, error) {
+	denied, err := j.deniedFn(ctx, subject)
+	if err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+	if denied {
+		return nil, errors.New("subject is denied")
+	}
+
 	access, err := j.makeToken(subject, AccessTokenType, j.accessTtl, j.accessPrivateKey, accessCustomeClaims)
 	if err != nil {
 		return nil, fmt.Errorf("%w", err)
@@ -126,12 +179,12 @@ func (j *JwtPublic) Generate(
 	}, nil
 }
 
-func (j *JwtPublic) ValidateAccess(signed string) (*JwtClaims, error) {
-	return j.validate(signed, AccessTokenType, j.accessPublicKey)
+func (j *JwtPublic) ValidateAccess(ctx context.Context, signed string) (*JwtClaims, error) {
+	return j.validate(ctx, signed, AccessTokenType, j.accessPublicKey)
 }
 
-func (j *JwtPublic) ValidateRefresh(signed string) (*JwtClaims, error) {
-	return j.validate(signed, RefreshTokenType, j.refreshPublicKey)
+func (j *JwtPublic) ValidateRefresh(ctx context.Context, signed string) (*JwtClaims, error) {
+	return j.validate(ctx, signed, RefreshTokenType, j.refreshPublicKey)
 }
 
 func (j *JwtPublic) makeToken(
@@ -165,7 +218,7 @@ func (j *JwtPublic) makeToken(
 }
 
 func (j *JwtPublic) validate(
-	signed string, expected TokenType, publicKey *rsa.PublicKey,
+	ctx context.Context, signed string, expected TokenType, publicKey *rsa.PublicKey,
 ) (*JwtClaims, error) {
 	parsedClaims := JwtClaims{}
 	token, err := jwt.ParseWithClaims(
@@ -198,7 +251,23 @@ func (j *JwtPublic) validate(
 		return nil, errors.New("invalid token")
 	}
 
+	denied, err := j.deniedFn(ctx, claims.Subject)
+	if err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+	if denied {
+		return nil, errors.New("subject is denied")
+	}
+
 	return claims, nil
+}
+
+func (j JwtPublic) Deny(ctx context.Context, subject string) error {
+	return j.denyFn(ctx, subject)
+}
+
+func (j JwtPublic) Undeny(ctx context.Context, subject string) error {
+	return j.undenyFn(ctx, subject)
 }
 
 func loadPrivateKey(path string) (*rsa.PrivateKey, error) {

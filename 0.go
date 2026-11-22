@@ -1,6 +1,7 @@
 package gojwt
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -35,13 +36,6 @@ type PublicConfig struct {
 	RefreshPublicKeyPath string
 	AccessTtl            time.Duration
 	RefreshTtl           time.Duration
-
-	// IsBlockFn reports whether a subject is on the caller's deny list.
-	// It runs after a token has been verified. Optional.
-	IsBlockFn func(subject string) (bool, error)
-	// OnBlocked is an event invoked whenever a verified token is rejected
-	// because its subject is denied. Optional.
-	OnBlocked func(subject string)
 }
 
 type Tokens struct {
@@ -54,4 +48,10 @@ type TokenType string
 const (
 	AccessTokenType  TokenType = "access"
 	RefreshTokenType TokenType = "refresh"
+)
+
+type (
+	denyFn   func(ctx context.Context, subject string) error
+	undenyFn func(ctx context.Context, subject string) error
+	deniedFn func(ctx context.Context, subject string) (bool, error)
 )

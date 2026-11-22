@@ -1,6 +1,7 @@
 package gojwt
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -273,7 +274,7 @@ func TestJwtPublicGenerate(t *testing.T) {
 	access, refresh, _ := testKeyPairs(t)
 	j := mustPublicSig(t, publicSignerConfig(t, access, refresh))
 
-	tokens, err := j.Generate(testSubject, nil, nil)
+	tokens, err := j.Generate(context.Background(), testSubject, nil, nil)
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
@@ -292,12 +293,12 @@ func TestJwtPublicValidateAccess(t *testing.T) {
 	j := mustPublicSig(t, publicFullConfig(t, access, refresh))
 	before := time.Now().UTC()
 
-	tokens, err := j.Generate(testSubject, map[string]any{testRoleKey: testAdminRole}, nil)
+	tokens, err := j.Generate(context.Background(), testSubject, map[string]any{testRoleKey: testAdminRole}, nil)
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
 
-	claims, err := j.ValidateAccess(tokens.Access)
+	claims, err := j.ValidateAccess(context.Background(), tokens.Access)
 	if err != nil {
 		t.Fatalf("ValidateAccess() error = %v", err)
 	}
@@ -317,12 +318,12 @@ func TestJwtPublicValidateRefresh(t *testing.T) {
 	access, refresh, _ := testKeyPairs(t)
 	j := mustPublicSig(t, publicFullConfig(t, access, refresh))
 
-	tokens, err := j.Generate(testSubject, nil, map[string]any{testDeviceKey: testDeviceVal})
+	tokens, err := j.Generate(context.Background(), testSubject, nil, map[string]any{testDeviceKey: testDeviceVal})
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
 
-	claims, err := j.ValidateRefresh(tokens.Refresh)
+	claims, err := j.ValidateRefresh(context.Background(), tokens.Refresh)
 	if err != nil {
 		t.Fatalf("ValidateRefresh() error = %v", err)
 	}
@@ -350,12 +351,12 @@ func TestJwtPublicSignerVerifierRoundTrip(t *testing.T) {
 	signer := mustPublicSig(t, publicSignerConfig(t, access, refresh))
 	verifier := mustPublicVer(t, publicVerifierConfig(t, access, refresh))
 
-	tokens, err := signer.Generate(testSubject, map[string]any{testRoleKey: "user"}, nil)
+	tokens, err := signer.Generate(context.Background(), testSubject, map[string]any{testRoleKey: "user"}, nil)
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
 
-	accessClaims, err := verifier.ValidateAccess(tokens.Access)
+	accessClaims, err := verifier.ValidateAccess(context.Background(), tokens.Access)
 	if err != nil {
 		t.Fatalf("ValidateAccess() error = %v", err)
 	}
@@ -366,7 +367,7 @@ func TestJwtPublicSignerVerifierRoundTrip(t *testing.T) {
 		t.Errorf("custom claims = %v", accessClaims.CustomClaims)
 	}
 
-	if _, err := verifier.ValidateRefresh(tokens.Refresh); err != nil {
+	if _, err := verifier.ValidateRefresh(context.Background(), tokens.Refresh); err != nil {
 		t.Fatalf("ValidateRefresh() error = %v", err)
 	}
 }
@@ -379,7 +380,7 @@ func TestJwtPublicValidateErrors(t *testing.T) {
 	signer := mustPublicSig(t, publicSignerConfig(t, access, refresh))
 	verifier := mustPublicVer(t, publicVerifierConfig(t, access, refresh))
 
-	tokens, err := signer.Generate(testSubject, nil, nil)
+	tokens, err := signer.Generate(context.Background(), testSubject, nil, nil)
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
@@ -399,7 +400,7 @@ func TestJwtPublicValidateErrors(t *testing.T) {
 	expiredCfg.RefreshTtl = -time.Minute
 	expired := mustPublicSig(t, expiredCfg)
 
-	expiredTokens, err := expired.Generate(testSubject, nil, nil)
+	expiredTokens, err := expired.Generate(context.Background(), testSubject, nil, nil)
 	if err != nil {
 		t.Fatalf("Generate() expired tokens error = %v", err)
 	}
@@ -418,7 +419,7 @@ func TestJwtPublicValidateErrors(t *testing.T) {
 	tests := []struct {
 		name     string
 		token    string
-		validate func(string) (*JwtClaims, error)
+		validate func(context.Context, string) (*JwtClaims, error)
 		wantIs   error
 	}{
 		{
@@ -483,7 +484,7 @@ func TestJwtPublicValidateErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			claims, err := tc.validate(tc.token)
+			claims, err := tc.validate(context.Background(), tc.token)
 			if err == nil {
 				t.Fatalf("validate() error = nil, claims = %+v", claims)
 			}

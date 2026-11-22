@@ -1,6 +1,7 @@
 package gojwt
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -95,7 +96,7 @@ func TestJwtLocalGenerate(t *testing.T) {
 
 	j := mustLocal(t, localConfig())
 
-	tokens, err := j.Generate(testSubject, nil, nil)
+	tokens, err := j.Generate(context.Background(), testSubject, nil, nil)
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
@@ -114,7 +115,7 @@ func TestJwtLocalValidateAccess(t *testing.T) {
 	before := time.Now().UTC()
 
 	tokens, err := j.Generate(
-		testSubject,
+		context.Background(), testSubject,
 		map[string]any{testRoleKey: testAdminRole, testTenantKey: testTenantVal},
 		nil,
 	)
@@ -122,7 +123,7 @@ func TestJwtLocalValidateAccess(t *testing.T) {
 		t.Fatalf("Generate() error = %v", err)
 	}
 
-	claims, err := j.ValidateAccess(tokens.Access)
+	claims, err := j.ValidateAccess(context.Background(), tokens.Access)
 	if err != nil {
 		t.Fatalf("ValidateAccess() error = %v", err)
 	}
@@ -142,12 +143,12 @@ func TestJwtLocalValidateRefresh(t *testing.T) {
 
 	j := mustLocal(t, localConfig())
 
-	tokens, err := j.Generate(testSubject, nil, map[string]any{testDeviceKey: testDeviceVal})
+	tokens, err := j.Generate(context.Background(), testSubject, nil, map[string]any{testDeviceKey: testDeviceVal})
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
 
-	claims, err := j.ValidateRefresh(tokens.Refresh)
+	claims, err := j.ValidateRefresh(context.Background(), tokens.Refresh)
 	if err != nil {
 		t.Fatalf("ValidateRefresh() error = %v", err)
 	}
@@ -175,12 +176,12 @@ func TestJwtLocalGenerateWithoutCustomClaims(t *testing.T) {
 
 	j := mustLocal(t, localConfig())
 
-	tokens, err := j.Generate(testSubject, nil, nil)
+	tokens, err := j.Generate(context.Background(), testSubject, nil, nil)
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
 
-	access, err := j.ValidateAccess(tokens.Access)
+	access, err := j.ValidateAccess(context.Background(), tokens.Access)
 	if err != nil {
 		t.Fatalf("ValidateAccess() error = %v", err)
 	}
@@ -195,7 +196,7 @@ func TestJwtLocalValidateErrors(t *testing.T) {
 
 	j := mustLocal(t, localConfig())
 
-	tokens, err := j.Generate(testSubject, nil, nil)
+	tokens, err := j.Generate(context.Background(), testSubject, nil, nil)
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
@@ -217,7 +218,7 @@ func TestJwtLocalValidateErrors(t *testing.T) {
 	expiredCfg.RefreshTtl = -time.Minute
 	expired := mustLocal(t, expiredCfg)
 
-	expiredTokens, err := expired.Generate(testSubject, nil, nil)
+	expiredTokens, err := expired.Generate(context.Background(), testSubject, nil, nil)
 	if err != nil {
 		t.Fatalf("Generate() expired tokens error = %v", err)
 	}
@@ -225,7 +226,7 @@ func TestJwtLocalValidateErrors(t *testing.T) {
 	tests := []struct {
 		name     string
 		token    string
-		validate func(string) (*JwtClaims, error)
+		validate func(context.Context, string) (*JwtClaims, error)
 		wantIs   error
 	}{
 		{
@@ -285,7 +286,7 @@ func TestJwtLocalValidateErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			claims, err := tc.validate(tc.token)
+			claims, err := tc.validate(context.Background(), tc.token)
 			if err == nil {
 				t.Fatalf("validate() error = nil, claims = %+v", claims)
 			}
